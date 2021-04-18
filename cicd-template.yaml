@@ -8,7 +8,8 @@ metadata:
     iconClass: icon-jenkins
     tags: instant-app,jenkins,gogs,nexus,cicd
   name: cicd
-message: "Use the following credentials for login:\nJenkins: use your OpenShift credentials\nNexus: admin/admin123\nSonarQube: admin/admin\nGogs Git Server: gogs/gogs"
+message: "Use the following credentials for login:\nJenkins: use your OpenShift credentials\nNexus: admin/admin123\n
+Qube: admin/admin\nGogs Git Server: gogs/gogs"
 parameters:
 - displayName: DEV project name
   value: dev
@@ -113,7 +114,7 @@ objects:
               stage('Code Analysis') {
                 steps {
                   script {
-                    sh "${mvnCmd} sonar:sonar -Dsonar.host.url=http://sonarqube:9000 -DskipTests=true"
+                    sh "${mvnCmd} sonar:sonar -Dsonar.login=admin -Dsonar.password=admin -Dsonar.host.url=http://sonarqube:9000 -DskipTests=true"
                   }
                 }
               }
