@@ -24,10 +24,9 @@ function usage() {
     echo "   --enable-quay              Optional    Enable integration of build and deployments with quay.io"
     echo "   --quay-username            Optional    quay.io username to push the images to a quay.io account. Required if --enable-quay is set"
     echo "   --quay-password            Optional    quay.io password to push the images to a quay.io account. Required if --enable-quay is set"
-    echo "   --user [username]          Optional    The admin user for the demo projects. Required if logged in as system:admin"
+    echo "   --user [username]          Optional    The admin user for the demo projects. Required if logged in as kube:admin"
     echo "   --project-suffix [suffix]  Optional    Suffix to be added to demo project names e.g. ci-SUFFIX. If empty, user will be used as suffix"
     echo "   --ephemeral                Optional    Deploy demo without persistent storage. Default false"
-    echo "   --enable-che               Optional    Deploy Eclipse Che as an online IDE for code changes. Default false"
     echo "   --oc-options               Optional    oc client options to pass to all oc commands e.g. --server https://my.openshift.com"
     echo
 }
@@ -37,7 +36,6 @@ ARG_PROJECT_SUFFIX=
 ARG_COMMAND=
 ARG_EPHEMERAL=false
 ARG_OC_OPS=
-ARG_DEPLOY_CHE=false
 ARG_ENABLE_QUAY=false
 ARG_QUAY_USER=
 ARG_QUAY_PASS=
@@ -112,9 +110,6 @@ while :; do
         --ephemeral)
             ARG_EPHEMERAL=true
             ;;
-        --enable-che|--deploy-che)
-            ARG_DEPLOY_CHE=true
-            ;;
         -h|--help)
             usage
             exit 0
@@ -143,7 +138,7 @@ LOGGEDIN_USER=$(oc $ARG_OC_OPS whoami)
 OPENSHIFT_USER=${ARG_USERNAME:-$LOGGEDIN_USER}
 PRJ_SUFFIX=${ARG_PROJECT_SUFFIX:-`echo $OPENSHIFT_USER | sed -e 's/[-@].*//g'`}
 GITHUB_ACCOUNT=${GITHUB_ACCOUNT:-siamaksade}
-GITHUB_REF=${GITHUB_REF:-ocp-4.1}
+GITHUB_REF=${GITHUB_REF:-ocp-4.6}
 
 function deploy() {
   oc $ARG_OC_OPS new-project dev-$PRJ_SUFFIX   --display-name="Tasks - Dev"
@@ -154,8 +149,9 @@ function deploy() {
 
   oc $ARG_OC_OPS policy add-role-to-group edit system:serviceaccounts:cicd-$PRJ_SUFFIX -n dev-$PRJ_SUFFIX
   oc $ARG_OC_OPS policy add-role-to-group edit system:serviceaccounts:cicd-$PRJ_SUFFIX -n stage-$PRJ_SUFFIX
+  oc $ARG_OC_OPS policy add-role-to-group edit system:serviceaccounts:cicd-$PRJ_SUFFIX -n cicd-$PRJ_SUFFIX
 
-  if [ $LOGGEDIN_USER == 'system:admin' ] ; then
+  if [ $LOGGEDIN_USER == 'kube:admin' ] ; then
     oc $ARG_OC_OPS adm policy add-role-to-user admin $ARG_USERNAME -n dev-$PRJ_SUFFIX >/dev/null 2>&1
     oc $ARG_OC_OPS adm policy add-role-to-user admin $ARG_USERNAME -n stage-$PRJ_SUFFIX >/dev/null 2>&1
     oc $ARG_OC_OPS adm policy add-role-to-user admin $ARG_USERNAME -n cicd-$PRJ_SUFFIX >/dev/null 2>&1
@@ -175,7 +171,7 @@ function deploy() {
 
   local template=https://raw.githubusercontent.com/$GITHUB_ACCOUNT/openshift-cd-demo/$GITHUB_REF/cicd-template.yaml
   echo "Using template $template"
-  oc $ARG_OC_OPS new-app -f $template -p DEV_PROJECT=dev-$PRJ_SUFFIX -p STAGE_PROJECT=stage-$PRJ_SUFFIX -p DEPLOY_CHE=$ARG_DEPLOY_CHE -p EPHEMERAL=$ARG_EPHEMERAL -p ENABLE_QUAY=$ARG_ENABLE_QUAY -p QUAY_USERNAME=$ARG_QUAY_USER -p QUAY_PASSWORD=$ARG_QUAY_PASS -n cicd-$PRJ_SUFFIX 
+  oc $ARG_OC_OPS new-app -f $template -p DEV_PROJECT=dev-$PRJ_SUFFIX -p STAGE_PROJECT=stage-$PRJ_SUFFIX -p EPHEMERAL=$ARG_EPHEMERAL -p ENABLE_QUAY=$ARG_ENABLE_QUAY -p QUAY_USERNAME=$ARG_QUAY_USER -p QUAY_PASSWORD=$ARG_QUAY_PASS -n cicd-$PRJ_SUFFIX 
 }
 
 function make_idle() {
@@ -201,7 +197,7 @@ function make_unidle() {
 }
 
 function set_default_project() {
-  if [ $LOGGEDIN_USER == 'system:admin' ] ; then
+  if [ $LOGGEDIN_USER == 'kube:admin' ] ; then
     oc $ARG_OC_OPS project default >/dev/null
   fi
 }
@@ -226,14 +222,14 @@ function echo_header() {
 # MAIN: DEPLOY DEMO                                                            #
 ################################################################################
 
-if [ "$LOGGEDIN_USER" == 'system:admin' ] && [ -z "$ARG_USERNAME" ] ; then
+if [ "$LOGGEDIN_USER" == 'kube:admin' ] && [ -z "$ARG_USERNAME" ] ; then
   # for verify and delete, --project-suffix is enough
   if [ "$ARG_COMMAND" == "delete" ] || [ "$ARG_COMMAND" == "verify" ] && [ -z "$ARG_PROJECT_SUFFIX" ]; then
-    echo "--user or --project-suffix must be provided when running $ARG_COMMAND as 'system:admin'"
+    echo "--user or --project-suffix must be provided when running $ARG_COMMAND as 'kube:admin'"
     exit 255
   # deploy command
   elif [ "$ARG_COMMAND" != "delete" ] && [ "$ARG_COMMAND" != "verify" ] ; then
-    echo "--user must be provided when running $ARG_COMMAND as 'system:admin'"
+    echo "--user must be provided when running $ARG_COMMAND as 'kube:admin'"
     exit 255
   fi
 fi

@@ -18,11 +18,6 @@ parameters:
   value: stage
   name: STAGE_PROJECT
   required: true
-- displayName: Deploy Eclipse Che
-  description: Deploy Eclipse Che in order to use as an online IDE for changing code in this demo
-  value: "false"
-  name: DEPLOY_CHE
-  required: true
 - displayName: Ephemeral
   description: Use no persistent storage for Gogs and Nexus
   value: "true"
@@ -113,7 +108,7 @@ objects:
               stage('Code Analysis') {
                 steps {
                   script {
-                    sh "${mvnCmd} sonar:sonar -Dsonar.host.url=http://sonarqube:9000 -DskipTests=true"
+                    sh "${mvnCmd} install sonar:sonar -Dsonar.host.url=http://sonarqube:9000 -DskipTests=true"
                   }
                 }
               }
@@ -208,7 +203,7 @@ objects:
         <containers>
           <org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
             <name>jnlp</name>
-            <image>openshift/jenkins-agent-maven-35-centos7</image>
+            <image>quay.io/siamaksade/jenkins-agent-maven-node:4.6</image>
             <privileged>false</privileged>
             <alwaysPullImage>false</alwaysPullImage>
             <workingDir>/tmp</workingDir>
@@ -296,7 +291,7 @@ objects:
               # dev
               oc create secret docker-registry quay-cicd-secret --docker-server=quay.io --docker-username="${QUAY_USERNAME}" --docker-password="${QUAY_PASSWORD}" --docker-email=cicd@redhat.com -n ${DEV_PROJECT}
               oc new-build --name=tasks --image-stream=wildfly:latest --binary=true --push-secret=quay-cicd-secret --to-docker --to='quay.io/${QUAY_USERNAME}/${QUAY_REPOSITORY}:latest' -n ${DEV_PROJECT}
-              oc new-app --name=tasks --docker-image=quay.io/${QUAY_USERNAME}/${QUAY_REPOSITORY}:latest --allow-missing-images -n ${DEV_PROJECT}
+              oc new-app --name=tasks --docker-image=quay.io/${QUAY_USERNAME}/${QUAY_REPOSITORY}:latest --allow-missing-images --as-deployment-config -n ${DEV_PROJECT}
               oc set triggers dc tasks --remove-all -n ${DEV_PROJECT}
               oc patch dc tasks -p '{"spec": {"template": {"spec": {"containers": [{"name": "tasks", "imagePullPolicy": "Always"}]}}}}' -n ${DEV_PROJECT}
               oc delete is tasks -n ${DEV_PROJECT}
@@ -304,7 +299,7 @@ objects:
               
               # stage
               oc create secret docker-registry quay-cicd-secret --docker-server=quay.io --docker-username="${QUAY_USERNAME}" --docker-password="${QUAY_PASSWORD}" --docker-email=cicd@redhat.com -n ${STAGE_PROJECT}
-              oc new-app --name=tasks --docker-image=quay.io/${QUAY_USERNAME}/${QUAY_REPOSITORY}:stage --allow-missing-images -n ${STAGE_PROJECT}
+              oc new-app --name=tasks --docker-image=quay.io/${QUAY_USERNAME}/${QUAY_REPOSITORY}:stage --allow-missing-images --as-deployment-config -n ${STAGE_PROJECT}
               oc set triggers dc tasks --remove-all -n ${STAGE_PROJECT}
               oc patch dc tasks -p '{"spec": {"template": {"spec": {"containers": [{"name": "tasks", "imagePullPolicy": "Always"}]}}}}' -n ${STAGE_PROJECT}
               oc delete is tasks -n ${STAGE_PROJECT}
@@ -312,11 +307,11 @@ objects:
             else
               # dev
               oc new-build --name=tasks --image-stream=wildfly:latest --binary=true -n ${DEV_PROJECT}
-              oc new-app tasks:latest --allow-missing-images -n ${DEV_PROJECT}
+              oc new-app tasks:latest --allow-missing-images --as-deployment-config -n ${DEV_PROJECT}
               oc set triggers dc -l app=tasks --containers=tasks --from-image=tasks:latest --manual -n ${DEV_PROJECT}
               
               # stage
-              oc new-app tasks:stage --allow-missing-images -n ${STAGE_PROJECT}
+              oc new-app tasks:stage --allow-missing-images --as-deployment-config -n ${STAGE_PROJECT}
               oc set triggers dc -l app=tasks --containers=tasks --from-image=tasks:stage --manual -n ${STAGE_PROJECT}
             fi
             
@@ -339,12 +334,12 @@ objects:
             GOGS_HOSTNAME="gogs-$CICD_NAMESPACE.$HOSTNAME"
 
             if [ "${EPHEMERAL}" == "true" ] ; then
-              oc new-app -f https://raw.githubusercontent.com/OpenShiftDemos/gogs-openshift-docker/master/openshift/gogs-template.yaml \
+              oc new-app -f https://raw.githubusercontent.com/siamaksade/gogs/master/gogs-template-ephemeral.yaml \
                   --param=GOGS_VERSION=0.11.34 \
                   --param=HOSTNAME=$GOGS_HOSTNAME \
                   --param=SKIP_TLS_VERIFY=true
             else
-              oc new-app -f https://raw.githubusercontent.com/OpenShiftDemos/gogs-openshift-docker/master/openshift/gogs-persistent-template.yaml \
+              oc new-app -f https://raw.githubusercontent.com/siamaksade/gogs/master/gogs-template.yaml \
                   --param=GOGS_VERSION=0.11.34 \
                   --param=HOSTNAME=$GOGS_HOSTNAME \
                   --param=SKIP_TLS_VERIFY=true
@@ -353,27 +348,12 @@ objects:
             sleep 5
 
             if [ "${EPHEMERAL}" == "true" ] ; then
-              oc new-app -f https://raw.githubusercontent.com/siamaksade/sonarqube/master/sonarqube-template.yml --param=SONARQUBE_MEMORY_LIMIT=2Gi
+              oc process -f https://raw.githubusercontent.com/siamaksade/sonarqube/8/sonarqube-template.yaml | oc create -f -
             else
-              oc new-app -f https://raw.githubusercontent.com/siamaksade/sonarqube/master/sonarqube-persistent-template.yml --param=SONARQUBE_MEMORY_LIMIT=2Gi
+              oc process -f https://raw.githubusercontent.com/siamaksade/sonarqube/8/sonarqube-persistent-template.yaml | oc create -f -
             fi
 
-            oc set resources dc/sonardb --limits=cpu=200m,memory=512Mi --requests=cpu=50m,memory=128Mi
-            oc set resources dc/sonarqube --limits=cpu=1,memory=2Gi --requests=cpu=50m,memory=128Mi
-
-            if [ "${DEPLOY_CHE}" == "true" ] ; then
-              oc process -f https://raw.githubusercontent.com/minishift/minishift/master/addons/che/templates/che-workspace-service-account.yaml \
-                  --param SERVICE_ACCOUNT_NAMESPACE=$CICD_NAMESPACE --param=SERVICE_ACCOUNT_NAME=che-workspace | oc create -f -
-
-              oc process -f https://raw.githubusercontent.com/minishift/minishift/master/addons/che/templates/che-server-template.yaml \
-                --param ROUTING_SUFFIX=$HOSTNAME \
-                --param CHE_MULTIUSER=false \
-                --param CHE_VERSION="6.19.0" \
-                --param CHE_INFRA_OPENSHIFT_PROJECT=$CICD_NAMESPACE \
-                --param CHE_INFRA_KUBERNETES_SERVICE__ACCOUNT__NAME=che-workspace | oc create -f -
-
-              oc set resources dc/che --limits=cpu=1,memory=2Gi --requests=cpu=200m,memory=512Mi
-            fi
+            oc set resources dc/sonarqube --limits=cpu=1,memory=2.5Gi --requests=cpu=200m,memory=512Mi
 
             if [ "${EPHEMERAL}" == "true" ] ; then
               oc new-app -f https://raw.githubusercontent.com/OpenShiftDemos/nexus/master/nexus3-template.yaml --param=NEXUS_VERSION=3.13.0 --param=MAX_MEMORY=2Gi
@@ -389,21 +369,34 @@ objects:
 
             oc rollout status dc gogs
 
-            _RETURN=$(curl -o /tmp/curl.log -sL --post302 -w "%{http_code}" http://$GOGS_SVC:3000/user/sign_up \
-              --form user_name=$GOGS_USER \
-              --form password=$GOGS_PWD \
-              --form retype=$GOGS_PWD \
-              --form email=admin@gogs.com)
-
-            sleep 5
-
-            if [ $_RETURN != "200" ] && [ $_RETURN != "302" ] ; then
-              echo "ERROR: Failed to create Gogs admin"
-              cat /tmp/curl.log
-              exit 255
-            fi
-
+            # Even though the rollout is complete gogs isn't always ready to create the admin user
             sleep 10
+
+            # Try 10 times to create the admin user. Fail after that.
+            for i in {1..10};
+            do
+
+              _RETURN=$(curl -o /tmp/curl.log -sL --post302 -w "%{http_code}" http://$GOGS_SVC:3000/user/sign_up \
+                --form user_name=$GOGS_USER \
+                --form password=$GOGS_PWD \
+                --form retype=$GOGS_PWD \
+                --form email=admin@gogs.com)
+
+              if [ $_RETURN == "200" ] || [ $_RETURN == "302" ]
+              then
+                echo "SUCCESS: Created gogs admin user"
+                break
+              elif [ $_RETURN != "200" ] && [ $_RETURN != "302" ] && [ $i == 10 ]; then
+                echo "ERROR: Failed to create Gogs admin"
+                cat /tmp/curl.log
+                exit 255
+              fi
+
+              # Sleep between each attempt
+              sleep 10
+
+            done
+
 
             cat <<EOF > /tmp/data.json
             {
@@ -446,7 +439,10 @@ objects:
               cat /tmp/curl.log
               exit 255
             fi
-          image: quay.io/openshift/origin-cli:v4.0
+
+            oc label dc jenkins "app.kubernetes.io/part-of"="jenkins" --overwrite
+            oc label dc nexus "app.kubernetes.io/part-of"="nexus" --overwrite
+          image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
           name: cicd-demo-installer-job
           resources: {}
           terminationMessagePath: /dev/termination-log
