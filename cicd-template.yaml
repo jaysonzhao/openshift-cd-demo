@@ -339,7 +339,7 @@ objects:
                   --param=HOSTNAME=$GOGS_HOSTNAME \
                   --param=SKIP_TLS_VERIFY=true
             else
-              oc new-app -f https://raw.githubusercontent.com/siamaksade/gogs/master/gogs-template.yaml \
+              oc new-app -f ./gogs-template.yaml \
                   --param=GOGS_VERSION=0.11.34 \
                   --param=HOSTNAME=$GOGS_HOSTNAME \
                   --param=SKIP_TLS_VERIFY=true
@@ -350,7 +350,7 @@ objects:
             if [ "${EPHEMERAL}" == "true" ] ; then
               oc process -f https://raw.githubusercontent.com/siamaksade/sonarqube/8/sonarqube-template.yaml | oc create -f -
             else
-              oc process -f https://raw.githubusercontent.com/siamaksade/sonarqube/8/sonarqube-persistent-template.yaml | oc create -f -
+              oc process -f ./sonarqube-persistent-template.yaml | oc create -f -
             fi
 
             oc set resources dc/sonarqube --limits=cpu=1,memory=2.5Gi --requests=cpu=200m,memory=512Mi
@@ -358,7 +358,7 @@ objects:
             if [ "${EPHEMERAL}" == "true" ] ; then
               oc new-app -f https://raw.githubusercontent.com/OpenShiftDemos/nexus/master/nexus3-template.yaml --param=NEXUS_VERSION=3.13.0 --param=MAX_MEMORY=2Gi
             else
-              oc new-app -f https://raw.githubusercontent.com/OpenShiftDemos/nexus/master/nexus3-persistent-template.yaml --param=NEXUS_VERSION=3.13.0 --param=MAX_MEMORY=2Gi
+              oc new-app -f ./nexus3-persistent-template.yaml --param=NEXUS_VERSION=3.13.0 --param=MAX_MEMORY=2Gi
             fi
 
             oc set resources dc/nexus --requests=cpu=200m --limits=cpu=2
